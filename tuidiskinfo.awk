@@ -192,6 +192,7 @@ function gv( \
 	json, path, o,
 	v \
 ) {
+	JSONLEN = -1
 	v = get_json_value(json, path, o)
 	JSONLEN = substr(v, 1, 1) != "[" ? -1 : JSONLEN + 1
 	return v
