@@ -284,7 +284,7 @@ function device_health( \
 	status = st == "false" ? 2 : 0
 	nv = gv(json, "nvme_smart_health_information_log.critical_warning")
 	nvw = nv != "" && nv != "0" ? 1 : 0
-	return max(max(hmax, temp), max(status, nvw))
+	return HEALTH[max(max(hmax, temp), max(status, nvw))]
 }
 
 function ata_attr_raw( \
@@ -338,7 +338,7 @@ function cache_device( \
 	CACHE_MODEL[i] = n == "" ? str(json, "scsi_model_name", "Unknown") : n
 	t = gv(json, "temperature.current")
 	CACHE_TEMP[i] = t == "" || t == "0" ? "--" : t " C"
-	CACHE_HEALTH[i] = HEALTH[device_health(json)]
+	CACHE_HEALTH[i] = device_health(json)
 	CACHED[i] = 1
 }
 
@@ -428,7 +428,7 @@ function print_details( \
 	tdisp = t == "" || t == "0" ? "--" : t " C"
 	st = gv(json, "smart_status.passed")
 	status = st == "true" ? "PASSED" : st == "false" ? "FAILED" : "--"
-	health = HEALTH[device_health(json)]
+	health = device_health(json)
 
 	buf_reset()
 	gv(json, "ata_smart_attributes.table", tbl)
