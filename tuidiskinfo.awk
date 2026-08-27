@@ -263,7 +263,7 @@ function attr_health(id, value, thresh, rawv) {
 
 function device_health( \
 	json,
-	tbl, n, i, hmax, t, temp, st, status, nv, nvw \
+	tbl, n, i, hmax, t, tn, temp, st, status, nv, nvw \
 ) {
 	gv(json, "ata_smart_attributes.table", tbl)
 	n = JSONLEN
@@ -274,13 +274,16 @@ function device_health( \
 	}
 	t = gv(json, "temperature.current")
 	if (t == "") temp = 0
-	else if (t + 0 < 50) temp = 0
-	else if (t + 0 < 55) temp = 1
-	else temp = 2
+	else {
+		tn = t + 0
+		if (tn < 50) temp = 0
+		else if (tn < 55) temp = 1
+		else temp = 2
+	}
 	st = gv(json, "smart_status.passed")
 	status = st == "false" ? 2 : 0
 	nv = gv(json, "nvme_smart_health_information_log.critical_warning")
-	nvw = nv != "" && nv + 0 != 0 ? 1 : 0
+	nvw = nv != "" && nv != "0" ? 1 : 0
 	return max(max(hmax, temp), max(status, nvw))
 }
 
@@ -334,7 +337,7 @@ function cache_device( \
 	n = str(json, "model_name", "")
 	CACHE_MODEL[i] = n == "" ? str(json, "scsi_model_name", "Unknown") : n
 	t = gv(json, "temperature.current")
-	CACHE_TEMP[i] = t == "" || t + 0 == 0 ? "--" : t " C"
+	CACHE_TEMP[i] = t == "" || t == "0" ? "--" : t " C"
 	CACHE_HEALTH[i] = HEALTH[device_health(json)]
 	CACHED[i] = 1
 }
@@ -422,7 +425,7 @@ function print_details( \
 	poh = str(json, "power_on_time.hours", "--")
 	cycles = str(json, "power_cycle_count", "--")
 	t = gv(json, "temperature.current")
-	tdisp = t == "" || t + 0 == 0 ? "--" : t " C"
+	tdisp = t == "" || t == "0" ? "--" : t " C"
 	st = gv(json, "smart_status.passed")
 	status = st == "true" ? "PASSED" : st == "false" ? "FAILED" : "--"
 	health = HEALTH[device_health(json)]
