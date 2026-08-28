@@ -314,9 +314,13 @@ function attr_health(id, value, thresh, rawv) {
 	return 0
 }
 
+function temperature_health(temp) {
+	return temp < 50 ? 0 : temp < 55 ? 1 : 2
+}
+
 function device_health( \
 	json,
-	tbl, n, i, hmax, t, tn, temp, st, status, nv, nvw \
+	tbl, n, i, hmax, t, temp, st, status, nv, nvw \
 ) {
 	gv(json, "ata_smart_attributes.table", tbl)
 	n = JSONLEN
@@ -327,12 +331,7 @@ function device_health( \
 	}
 	t = gv(json, "temperature.current")
 	if (t == "") temp = 0
-	else {
-		tn = t + 0
-		if (tn < 50) temp = 0
-		else if (tn < 55) temp = 1
-		else temp = 2
-	}
+	else temp = temperature_health(t + 0)
 	st = gv(json, "smart_status.passed")
 	status = st == "false" ? 2 : 0
 	nv = gv(json, "nvme_smart_health_information_log.critical_warning")
@@ -464,7 +463,7 @@ function sorted_keys( \
 function print_details( \
 	name, type,
 	json, model, firmware, serial, cap, rr, rotation, poh, cycles, t, tdisp, st,
-	status, health, hr, hw, dur, duw, x, tbl, n, i, id, val, thr, rawv, raw,
+	status, health, hr, hw, dur, duw, x, tbl, n, i, id, val, thr, rawv, raw, th,
 	nvobj, k, v \
 ) {
 	json = smart_json(name, type)
@@ -502,8 +501,9 @@ function print_details( \
 			rawv = num(tbl[i], "raw.value")
 			raw = str(tbl[i], "raw.string", "")
 			if (raw == "") raw = rawv
+			th = id == 194 ? temperature_health(t + 0) : attr_health(id, val, thr, rawv)
 			emit(sprintf(" %s %3d %-25.25s %4d %4d %4d  %s %s", \
-				color_health(HEALTH[attr_health(id, val, thr, rawv)]), \
+				color_health(HEALTH[th]), \
 				id, str(tbl[i], "name", ""), val, num(tbl[i], "worst"), thr, \
 				id in INDICATORS ? INDICATORS[id] : "  ", raw))
 		}
