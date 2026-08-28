@@ -143,6 +143,7 @@ function term_size( \
 
 function buf_reset() {
 	BUFN = 0
+	split("", BUF)
 }
 
 function emit(s) {
@@ -254,6 +255,57 @@ function scan_devices( \
 		DEV_TYPE[NDEV] = str(devs[i], "type", "")
 		NDEV++
 	}
+}
+
+function get_nvme_mode( \
+	dev,
+	base, syspath, speed, width, gen, ret \
+) {
+	base = dev
+	sub(/^\/dev\//, "", base)
+	sub(/n[0-9].*$/, "", base)
+
+	syspath = "/sys/class/nvme/" base "/device/current_link_speed"
+	ret = (getline speed < syspath) > 0
+	close(syspath)
+	if (ret) {
+		gen = "?"
+		if (speed ~ /2\.5/) gen = "1.0"
+		else if (speed ~ /5\.0/) gen = "2.0"
+		else if (speed ~ /8\.0/) gen = "3.0"
+		else if (speed ~ /16\.0/) gen = "4.0"
+		else if (speed ~ /32\.0/) gen = "5.0"
+	} else {
+		return "Unknown"
+	}
+
+	syspath = "/sys/class/nvme/" base "/device/current_link_width"
+	ret = (getline width < syspath) > 0
+	close(syspath)
+
+	return ret ? "PCIe " gen " " width "x" : "PCIe " gen
+}
+
+function get_sata_mode( \
+	dev,
+	mode, cmd, line, gbs \
+) {
+	mode = "Unknown"
+	cmd = "smartctl -i " shq(dev) " 2>/dev/null"
+	while ((cmd | getline line) > 0) {
+		if (line ~ /SATA Version is:/) {
+			if (match(line, /[0-9]+\.[0-9]+ Gb\/s/)) {
+				gbs = substr(line, RSTART, RLENGTH)
+				mode = "SATA/?"
+				if (gbs ~ /^6\.0/) mode = "SATA/600"
+				else if (gbs ~ /^3\.0/) mode = "SATA/300"
+				else if (gbs ~ /^1\.5/) mode = "SATA/150"
+			}
+		}
+	}
+	close(cmd)
+
+	return mode
 }
 
 function attr_health(id, value, thresh, rawv) {
@@ -374,7 +426,7 @@ function print_menu( \
 		page, pages
 }
 
-function emit_banner(name, model, health, status, tdisp, firmware, serial, cap, rotation, poh, cycles, hr, hw) {
+function emit_banner(name, model, health, status, tdisp, firmware, serial, cap, rotation, poh, cycles, hr, hw, mode) {
 	emit(sprintf("%s%s%s", C_HEAD, BAR_C, RESET))
 	emit(sprintf("%s %s  -  %s%s", C_HEAD, name, model, RESET))
 	emit(sprintf("%s%s%s", C_HEAD, BAR_C, RESET))
@@ -384,6 +436,7 @@ function emit_banner(name, model, health, status, tdisp, firmware, serial, cap, 
 	emit(sprintf(" %-16s: %s", "Firmware", firmware))
 	emit(sprintf(" %-16s: %s", "Serial", serial))
 	emit(sprintf(" %-16s: %s", "Capacity", human_size(cap)))
+	emit(sprintf(" %-16s: %s", "Transfer Mode", mode))
 	emit(sprintf(" %-16s: %s", "Rotation Rate", rotation))
 	emit(sprintf(" %-16s: %s", "Power On Hours", poh))
 	emit(sprintf(" %-16s: %s", "Power On Count", cycles))
@@ -411,8 +464,8 @@ function sorted_keys( \
 function print_details( \
 	name, type,
 	json, model, firmware, serial, cap, rr, rotation, poh, cycles, t, tdisp, st,
-	status, health, hr, hw, dur, duw, x, tbl, n, i, id, val, wst, thr, rawv, nm,
-	raw, nv, nvobj, k, v \
+	status, health, hr, hw, dur, duw, x, tbl, n, i, id, val, thr, rawv, raw,
+	nvobj, k, v \
 ) {
 	json = smart_json(name, type)
 	model = str(json, "model_name", "")
@@ -437,7 +490,7 @@ function print_details( \
 	if (n > 0) {
 		x = ata_attr_raw(tbl, n, 242); hr = x == "" ? "--" : human_size(x * BLOCKSIZE)
 		x = ata_attr_raw(tbl, n, 241); hw = x == "" ? "--" : human_size(x * BLOCKSIZE)
-		emit_banner(name, model, health, status, tdisp, firmware, serial, cap, rotation, poh, cycles, hr, hw)
+		emit_banner(name, model, health, status, tdisp, firmware, serial, cap, rotation, poh, cycles, hr, hw, get_sata_mode(name))
 		emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
 		emit(sprintf("%s %-7s %3s %-25s %4s %4s %4s  %s%s", \
 			C_HEAD, "Health", "ID", "AttributeName", "Cur", "Wst", "Thr", "RawValue", RESET))
@@ -445,38 +498,33 @@ function print_details( \
 		for (i = 0; i != n; i++) {
 			id = num(tbl[i], "id")
 			val = num(tbl[i], "value")
-			wst = num(tbl[i], "worst")
 			thr = num(tbl[i], "thresh")
 			rawv = num(tbl[i], "raw.value")
-			nm = str(tbl[i], "name", "")
 			raw = str(tbl[i], "raw.string", "")
 			if (raw == "") raw = rawv
 			emit(sprintf(" %s %3d %-25.25s %4d %4d %4d  %s %s", \
 				color_health(HEALTH[attr_health(id, val, thr, rawv)]), \
-				id, nm, val, wst, thr, \
+				id, str(tbl[i], "name", ""), val, num(tbl[i], "worst"), thr, \
 				id in INDICATORS ? INDICATORS[id] : "  ", raw))
 		}
-	} else {
-		nv = gv(json, "nvme_smart_health_information_log", nvobj)
-		if (nv != "") {
-			dur = nvobj["data_units_read"]; hr = dur == "" ? "--" : human_size(dur * 1000 * BLOCKSIZE)
-			duw = nvobj["data_units_written"]; hw = duw == "" ? "--" : human_size(duw * 1000 * BLOCKSIZE)
-			emit_banner(name, model, health, status, tdisp, firmware, serial, cap, rotation, poh, cycles, hr, hw)
-			emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
-			emit(sprintf("%s NVMe Health Information Log%s", C_HEAD, RESET))
-			emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
-			n = sorted_keys(nvobj, tbl)
-			for (i = 0; i != n; i++) {
-				k = tbl[i]
-				v = nvobj[k]
-				if (substr(v, 1, 1) == "\"") v = decode_json_string(v)
-				else if (substr(v, 1, 1) == "[") {
-					gsub(/\[[[:space:]]*/, "[", v)
-					gsub(/[[:space:]]*]/, "]", v)
-					gsub(/[[:space:]]*,[[:space:]]*/, ", ", v)
-				}
-				emit(sprintf(" %-30s: %s", k, v))
+	} else if (gv(json, "nvme_smart_health_information_log", nvobj) != "") {
+		dur = nvobj["data_units_read"]; hr = dur == "" ? "--" : human_size(dur * 1000 * BLOCKSIZE)
+		duw = nvobj["data_units_written"]; hw = duw == "" ? "--" : human_size(duw * 1000 * BLOCKSIZE)
+		emit_banner(name, model, health, status, tdisp, firmware, serial, cap, rotation, poh, cycles, hr, hw, get_nvme_mode(name))
+		emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
+		emit(sprintf("%s NVMe Health Information Log%s", C_HEAD, RESET))
+		emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
+		n = sorted_keys(nvobj, tbl)
+		for (i = 0; i != n; i++) {
+			k = tbl[i]
+			v = nvobj[k]
+			if (substr(v, 1, 1) == "\"") v = decode_json_string(v)
+			else if (substr(v, 1, 1) == "[") {
+				gsub(/\[[[:space:]]*/, "[", v)
+				gsub(/[[:space:]]*]/, "]", v)
+				gsub(/[[:space:]]*,[[:space:]]*/, ", ", v)
 			}
+			emit(sprintf(" %-30s: %s", k, v))
 		}
 	}
 	pager()
