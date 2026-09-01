@@ -71,18 +71,16 @@ function get_json_value( \
 
 function decode_json_string( \
 	s,
-	out, esc \
+	out, i, c \
 ) {
 	if (s !~ /^"./ || substr(s, length(s), 1) != "\"")
 		die("invalid json string " s)
 	s = substr(s, 2, length(s)-2)
-	esc["b"] = "\b"; esc["f"] = "\f"; esc["n"] = "\n"; esc["\""] = "\""
-	esc["r"] = "\r"; esc["t"] = "\t"; esc["/"] = "/" ; esc["\\"] = "\\"
-	while (match(s, /\\/)) {
-		if (!(substr(s, RSTART+1, 1) in esc))
-			die("unknown json escape " substr(s, RSTART, 2))
-		out = out substr(s, 1, RSTART-1) esc[substr(s, RSTART+1, 1)]
-		s = substr(s, RSTART+2)
+	while ((i = index(s, "\\")) != 0) {
+		if (!((c = substr(s, i+1, 1)) in JSONESC))
+			die("unknown json escape " substr(s, i, 2))
+		out = out substr(s, 1, i-1) JSONESC[c]
+		s = substr(s, i+2)
 	}
 	return out s
 }
@@ -561,6 +559,15 @@ function main_loop( \
 
 BEGIN {
 	JSONLEN = -1
+	JSONESC["b"] = "\b"
+	JSONESC["f"] = "\f"
+	JSONESC["n"] = "\n"
+	JSONESC["\""] = "\""
+	JSONESC["r"] = "\r"
+	JSONESC["t"] = "\t"
+	JSONESC["/"] = "/"
+	JSONESC["\\"] = "\\"
+
 	# 512 assumed, see https://github.com/prometheus-community/smartctl_exporter/issues/122
 	BLOCKSIZE = 512
 	DASH = "--------------------------------------------------------------------------------"
