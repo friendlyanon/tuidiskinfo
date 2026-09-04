@@ -96,17 +96,18 @@ function die(msg) {
 }
 
 function enter_tui() {
-	if (system("tput smcup 2>/dev/null") != 0) printf "\033[?1049h"
+	if (system("tput smcup 2>/dev/null") != 0) { printf "\033[?1049h"; system("") }
 	IN_TUI = 1
 }
 
 function leave_tui() {
-	if (system("tput rmcup 2>/dev/null") != 0) printf "\033[?1049l"
+	if (system("tput rmcup 2>/dev/null") != 0) { printf "\033[?1049l"; system("") }
 	IN_TUI = 0
 }
 
 function cls() {
 	printf "\033[H\033[2J"
+	system("")
 }
 
 function pause( \
@@ -114,6 +115,7 @@ function pause( \
 	d \
 ) {
 	printf "Press Enter to continue..."
+	system("")
 	getline d < "/dev/tty"
 }
 
@@ -162,6 +164,7 @@ function pager( \
 		endln = (top + rows < BUFN) ? (top + rows) : BUFN
 		printf "%s lines %d-%d/%d  [f/Enter] fwd  [b] back  [g] top  [G] bottom  [q] quit %s> ", \
 			C_HEAD, top + 1, endln, BUFN, RESET
+		system("")
 		if ((getline key < "/dev/tty") <= 0) break
 		if (key == "q" || key == "Q") break
 		else if (key == "b" || key == "p") { top -= rows; if (top < 0) top = 0 }
@@ -403,7 +406,6 @@ function print_menu( \
 	term_size()
 	cls()
 	print_header()
-	system("")
 	rows = LINES - 7
 	if (rows < 1) rows = 1
 	MROWS = rows
@@ -413,7 +415,6 @@ function print_menu( \
 		cache_device(i)
 		printf " %2d) %-14s %-30.30s %6s  %s\n", \
 			i + 1, DEV_NAME[i], CACHE_MODEL[i], CACHE_TEMP[i], color_health(CACHE_HEALTH[i])
-		system("")
 		shown++
 	}
 	print DASH_C
@@ -536,6 +537,7 @@ function main_loop( \
 	while (1) {
 		print_menu()
 		printf "> "
+		system("")
 		if ((getline choice < "/dev/tty") <= 0) break
 		if (choice == "q" || choice == "Q") break
 		else if (choice == "r" || choice == "R") { scan_devices(); cache_reset(); MTOP = 0 }
