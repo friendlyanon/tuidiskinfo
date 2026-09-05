@@ -518,9 +518,8 @@ function print_details( \
 			k = tbl[i]
 			v = nvobj[k]
 			if (substr(v, 1, 1) == "\"") v = decode_json_string(v)
-			else if (substr(v, 1, 1) == "[") {
-				gsub(/\[[[:space:]]*/, "[", v)
-				gsub(/[[:space:]]*]/, "]", v)
+			else if (sub(/^\[[[:space:]]*/, "[", v) != 0) {
+				sub(/[[:space:]]*]/, "]", v)
 				gsub(/[[:space:]]*,[[:space:]]*/, ", ", v)
 			}
 			emit(sprintf(" %-30s: %s", k, v))
