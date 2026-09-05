@@ -96,18 +96,17 @@ function die(msg) {
 }
 
 function enter_tui() {
-	if (system("tput smcup 2>/dev/null") != 0) { printf "\033[?1049h"; system("") }
+	if (system("tput smcup 2>/dev/null") != 0) printf "\033[?1049h"
 	IN_TUI = 1
 }
 
 function leave_tui() {
-	if (system("tput rmcup 2>/dev/null") != 0) { printf "\033[?1049l"; system("") }
+	if (system("tput rmcup 2>/dev/null") != 0) printf "\033[?1049l"
 	IN_TUI = 0
 }
 
 function cls() {
 	printf "\033[H\033[2J"
-	system("")
 }
 
 function pause( \
