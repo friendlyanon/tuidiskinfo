@@ -314,14 +314,17 @@ function attr_health(id, value, thresh, rawv) {
 	return 0
 }
 
-function temperature_health(temp) {
-	return temp < 50 ? 0 : temp < 55 ? 1 : 2
+function temperature_health(temp, type) {
+	if (type == "HDD") return temp < 50 ? 0 : temp < 55 ? 1 : 2
+	if (type == "SSD") return temp < 50 ? 0 : temp < 70 ? 1 : 2
+	return temp < 60 ? 0 : temp < 75 ? 1 : 2 # NVMe SSD
 }
 
 function device_health( \
 	json,
-	tbl, n, i, hmax, t, temp, st, status, nv, nvw \
+	tbl, n, i, hmax, type, t, temp, st, status, nv, nvw \
 ) {
+	type = num(json, "rotation_rate") > 0 ? "HDD" : "SSD"
 	gv(json, "ata_smart_attributes.table", tbl)
 	n = JSONLEN
 	hmax = 0
@@ -329,13 +332,16 @@ function device_health( \
 		hmax = max(hmax, attr_health(num(tbl[i], "id"), num(tbl[i], "value"), \
 			num(tbl[i], "thresh"), num(tbl[i], "raw.value")))
 	}
-	t = gv(json, "temperature.current")
-	if (t == "") temp = 0
-	else temp = temperature_health(t + 0)
 	st = gv(json, "smart_status.passed")
 	status = st == "false" ? 2 : 0
-	nv = gv(json, "nvme_smart_health_information_log.critical_warning")
-	nvw = nv != "" && nv != "0" ? 1 : 0
+	nvw = 0
+	if (gv(json, "nvme_smart_health_information_log", nvobj) != "") {
+		nv = nvobj["critical_warning"]
+		nvw = nv != "" && nv != "0" ? 1 : 0
+		type = "NVMe"
+	}
+	t = gv(json, "temperature.current")
+	temp = t == "" ? 0 : temperature_health(t + 0, type)
 	return HEALTH[max(max(hmax, temp), max(status, nvw))]
 }
 
@@ -499,7 +505,7 @@ function print_details( \
 			rawv = num(tbl[i], "raw.value")
 			raw = str(tbl[i], "raw.string", "")
 			if (raw == "") raw = rawv
-			th = id == 194 ? temperature_health(t + 0) : attr_health(id, val, thr, rawv)
+			th = id == 194 ? temperature_health(t + 0, rr > 0 ? "SSD" : "HDD") : attr_health(id, val, thr, rawv)
 			emit(sprintf(" %s %3d %-25.25s %4d %4d %4d  %s %s", \
 				color_health(HEALTH[th]), \
 				id, str(tbl[i], "name", ""), val, num(tbl[i], "worst"), thr, \
