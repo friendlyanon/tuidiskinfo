@@ -322,7 +322,7 @@ function temperature_health(temp, type) {
 
 function device_health( \
 	json,
-	tbl, n, i, hmax, type, t, temp, st, status, nv, nvw \
+	type, tbl, n, hmax, i, st, status, nvw, nvobj, nv, t, temp \
 ) {
 	type = num(json, "rotation_rate") > 0 ? "HDD" : "SSD"
 	gv(json, "ata_smart_attributes.table", tbl)
