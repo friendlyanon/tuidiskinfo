@@ -320,9 +320,19 @@ function temperature_health(temp, type) {
 	return temp < 60 ? 0 : temp < 75 ? 1 : 2 # NVMe SSD
 }
 
+function get_nvme_temp( \
+	t, ts,
+	tv \
+) {
+	if (t == "40" && substr(ts, 1, 1) == "[") {
+		if ((tv = gv(ts, "1")) != "") return tv
+	}
+	return t
+}
+
 function device_health( \
 	json,
-	type, tbl, n, hmax, i, st, status, nvw, nvobj, nv, t, temp \
+	type, tbl, n, hmax, i, st, status, nvw, t, nvobj, nv, temp \
 ) {
 	type = num(json, "rotation_rate") > 0 ? "HDD" : "SSD"
 	gv(json, "ata_smart_attributes.table", tbl)
@@ -335,12 +345,13 @@ function device_health( \
 	st = gv(json, "smart_status.passed")
 	status = st == "false" ? 2 : 0
 	nvw = 0
+	t = gv(json, "temperature.current")
 	if (gv(json, "nvme_smart_health_information_log", nvobj) != "") {
 		nv = nvobj["critical_warning"]
 		nvw = nv != "" && nv != "0" ? 1 : 0
 		type = "NVMe"
+		t = get_nvme_temp(t, nvobj["temperature_sensors"])
 	}
-	t = gv(json, "temperature.current")
 	temp = t == "" ? 0 : temperature_health(t + 0, type)
 	return HEALTH[max(max(hmax, temp), max(status, nvw))]
 }
@@ -388,13 +399,14 @@ function print_header() {
 
 function cache_device( \
 	i,
-	json, n, t \
+	json, n, t, ts \
 ) {
 	if (i in CACHED) return
 	json = smart_json(DEV_NAME[i], DEV_TYPE[i])
 	n = str(json, "model_name", "")
 	CACHE_MODEL[i] = n == "" ? str(json, "scsi_model_name", "Unknown") : n
 	t = gv(json, "temperature.current")
+	if ((ts = gv(json, "nvme_smart_health_information_log.temperature_sensors")) != "") t = get_nvme_temp(t, ts)
 	CACHE_TEMP[i] = t == "" || t == "0" ? "--" : t " C"
 	CACHE_HEALTH[i] = device_health(json)
 	CACHED[i] = 1
@@ -429,13 +441,13 @@ function print_menu( \
 		page, pages
 }
 
-function emit_banner(name, model, health, status, tdisp, firmware, serial, cap, rotation, poh, cycles, hr, hw, mode) {
+function emit_banner(name, model, health, status, t, firmware, serial, cap, rotation, poh, cycles, hr, hw, mode) {
 	emit(sprintf("%s%s%s", C_HEAD, BAR_C, RESET))
 	emit(sprintf("%s %s  -  %s%s", C_HEAD, name, model, RESET))
 	emit(sprintf("%s%s%s", C_HEAD, BAR_C, RESET))
 	emit(sprintf(" %-16s: %s", "Health", color_health(health)))
 	emit(sprintf(" %-16s: %s", "SMART Status", status))
-	emit(sprintf(" %-16s: %s", "Temperature", tdisp))
+	emit(sprintf(" %-16s: %s", "Temperature", t == "" || t == "0" ? "--" : t " C"))
 	emit(sprintf(" %-16s: %s", "Firmware", firmware))
 	emit(sprintf(" %-16s: %s", "Serial", serial))
 	emit(sprintf(" %-16s: %s", "Capacity", human_size(cap)))
@@ -466,7 +478,7 @@ function sorted_keys( \
 
 function print_details( \
 	name, type,
-	json, model, firmware, serial, cap, rr, rotation, poh, cycles, t, tdisp, st,
+	json, model, firmware, serial, cap, rr, rotation, poh, cycles, t, st,
 	status, health, hr, hw, dur, duw, x, tbl, n, i, id, val, thr, rawv, raw, th,
 	nvobj, k, v \
 ) {
@@ -482,7 +494,6 @@ function print_details( \
 	poh = str(json, "power_on_time.hours", "--")
 	cycles = str(json, "power_cycle_count", "--")
 	t = gv(json, "temperature.current")
-	tdisp = t == "" || t == "0" ? "--" : t " C"
 	st = gv(json, "smart_status.passed")
 	status = st == "true" ? "PASSED" : st == "false" ? "FAILED" : "--"
 	health = device_health(json)
@@ -493,7 +504,7 @@ function print_details( \
 	if (n > 0) {
 		x = ata_attr_raw(tbl, n, 242); hr = x == "" ? "--" : human_size(x * BLOCKSIZE)
 		x = ata_attr_raw(tbl, n, 241); hw = x == "" ? "--" : human_size(x * BLOCKSIZE)
-		emit_banner(name, model, health, status, tdisp, firmware, serial, cap, rotation, poh, cycles, hr, hw, get_sata_mode(name))
+		emit_banner(name, model, health, status, t, firmware, serial, cap, rotation, poh, cycles, hr, hw, get_sata_mode(name))
 		emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
 		emit(sprintf("%s %-7s %3s %-25s %4s %4s %4s  %s%s", \
 			C_HEAD, "Health", "ID", "AttributeName", "Cur", "Wst", "Thr", "RawValue", RESET))
@@ -514,7 +525,7 @@ function print_details( \
 	} else if (gv(json, "nvme_smart_health_information_log", nvobj) != "") {
 		dur = nvobj["data_units_read"]; hr = dur == "" ? "--" : human_size(dur * 1000 * BLOCKSIZE)
 		duw = nvobj["data_units_written"]; hw = duw == "" ? "--" : human_size(duw * 1000 * BLOCKSIZE)
-		emit_banner(name, model, health, status, tdisp, firmware, serial, cap, rotation, poh, cycles, hr, hw, get_nvme_mode(name))
+		emit_banner(name, model, health, status, get_nvme_temp(t, nvobj["temperature_sensors"]), firmware, serial, cap, rotation, poh, cycles, hr, hw, get_nvme_mode(name))
 		emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
 		emit(sprintf("%s NVMe Health Information Log%s", C_HEAD, RESET))
 		emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
