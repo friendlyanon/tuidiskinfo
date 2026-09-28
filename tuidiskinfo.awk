@@ -318,7 +318,7 @@ function smart_afr_value( \
 	rates, value,
 	idx \
 ) {
-	idx = int(value)
+	idx = int(value) + 1
 	if (idx < 1) idx = 1
 	if (idx > SMARTLEN) idx = SMARTLEN
 	return 365 / 30 * rates[idx]
