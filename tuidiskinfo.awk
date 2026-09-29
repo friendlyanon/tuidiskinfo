@@ -274,6 +274,14 @@ function scan_devices( \
 			NDEV++
 		}
 	}
+
+	if (NDEV < 2) return
+	for (i = 0; i != NDEV - 1; i++)
+		for (j = i + 1; j != NDEV; j++)
+			if (DEV_NAME[i] > DEV_NAME[j]) {
+				name = DEV_NAME[i]; DEV_NAME[i] = DEV_NAME[j]; DEV_NAME[j] = name
+				dev = DEV_TYPE[i]; DEV_TYPE[i] = DEV_TYPE[j]; DEV_TYPE[j] = dev
+			}
 }
 
 function get_nvme_mode( \
