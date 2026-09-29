@@ -61,7 +61,7 @@ function get_json_value( \
 				return get_json_value(substr(s, i), rest, a)
 			c = get_json_value(substr(s, i), "", null, 1)
 			if (all && !skip && isval) a[JSONLEN = k] = c
-			if (c ~ /^"/ && !isval) k = substr(c, 2, length(c)-2)
+			if (substr(c, 1, 1) == "\"" && !isval) k = substr(c, 2, length(c)-2)
 		}
 	}
 	if ((type == "{" && c != "}") || (type == "[" && c != "]"))
@@ -297,11 +297,11 @@ function get_nvme_mode( \
 	close(syspath)
 	if (ret) {
 		gen = "?"
-		if (speed ~ /2\.5/) gen = "1.0"
-		else if (speed ~ /5\.0/) gen = "2.0"
-		else if (speed ~ /8\.0/) gen = "3.0"
-		else if (speed ~ /16\.0/) gen = "4.0"
-		else if (speed ~ /32\.0/) gen = "5.0"
+		if (index(speed, "1.5")) gen = "1.0"
+		else if (index(speed, "5.0")) gen = "2.0"
+		else if (index(speed, "8.0")) gen = "3.0"
+		else if (index(speed, "16.0")) gen = "4.0"
+		else if (index(speed, "32.0")) gen = "5.0"
 	} else {
 		return "Unknown"
 	}
@@ -320,14 +320,12 @@ function get_sata_mode( \
 	mode = "Unknown"
 	cmd = "smartctl -i " shq(dev) " 2>/dev/null"
 	while ((cmd | getline line) > 0) {
-		if (line ~ /SATA Version is:/) {
-			if (match(line, /[0-9]+\.[0-9]+ Gb\/s/)) {
-				gbs = substr(line, RSTART, RLENGTH)
-				mode = "SATA/?"
-				if (gbs ~ /^6\.0/) mode = "SATA/600"
-				else if (gbs ~ /^3\.0/) mode = "SATA/300"
-				else if (gbs ~ /^1\.5/) mode = "SATA/150"
-			}
+		if (index(line, "SATA Version is:") && match(line, /[0-9]+\.[0-9]+ Gb\/s/)) {
+			gbs = substr(line, RSTART, RLENGTH)
+			mode = "SATA/?"
+			if (index(gbs, "6.0")) mode = "SATA/600"
+			else if (index(gbs, "3.0")) mode = "SATA/300"
+			else if (index(gbs, "1.5")) mode = "SATA/150"
 		}
 	}
 	close(cmd)
