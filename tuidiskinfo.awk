@@ -327,7 +327,8 @@ function get_sata_mode( \
 	return mode
 }
 
-function attr_health(id, value, thresh, rawv) {
+function attr_health(id, value, thresh, rawv, model) {
+	if (id == 188 && substr(model, 1, 2) == "ST") return 0
 	if (thresh != 0 && value < thresh) return 2
 	if (rawv != 0 && id in CAUTION) return 1
 	return 0
@@ -417,15 +418,17 @@ function get_nvme_temp( \
 
 function device_health( \
 	json,
-	type, tbl, n, hmax, i, st, status, nvw, t, nvobj, nv, temp \
+	type, tbl, n, hmax, i, st, status, nvw, t, nvobj, nv, temp, model \
 ) {
 	type = num(json, "rotation_rate") > 0 ? "HDD" : "SSD"
+	model = str(json, "model_name", "")
+	if (model == "") model = str(json, "scsi_model_name", "")
 	gv(json, "ata_smart_attributes.table", tbl)
 	n = JSONLEN
 	hmax = 0
 	for (i = 0; i < n; i++) {
 		hmax = max(hmax, attr_health(num(tbl[i], "id"), num(tbl[i], "value"), \
-			num(tbl[i], "thresh"), num(tbl[i], "raw.value")))
+			num(tbl[i], "thresh"), num(tbl[i], "raw.value"), model))
 	}
 	st = gv(json, "smart_status.passed")
 	status = st == "false" ? 2 : 0
@@ -606,7 +609,7 @@ function print_details( \
 			rawv = num(tbl[i], "raw.value")
 			raw = str(tbl[i], "raw.string", "")
 			if (raw == "") raw = rawv
-			th = id == 194 ? temperature_health(t + 0, rr > 0 ? "SSD" : "HDD") : attr_health(id, val, thr, rawv)
+			th = id == 194 ? temperature_health(t + 0, rr > 0 ? "SSD" : "HDD") : attr_health(id, val, thr, rawv, model)
 			emit(sprintf(" %s %3d %-25.25s %4d %4d %4d  %s %s", \
 				color_health(HEALTH[th]), \
 				id, str(tbl[i], "name", ""), val, num(tbl[i], "worst"), thr, \
