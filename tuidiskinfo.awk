@@ -241,19 +241,38 @@ function smart_json( \
 
 function scan_devices( \
 	\
-	scan, devs, n, i, name \
+	scan, devs, n, i, name, ndev, j, dev, found, darr \
 ) {
 	NDEV = 0
 	scan = run("smartctl --scan -j 2>/dev/null")
-	if (substr(gv(scan, "devices", devs), 1, 1) != "[") return
-	n = JSONLEN
-	for (i = 0; i != n; i++) {
-		name = str(devs[i], "name", "")
-		if (name == "") continue
-		if (system("test -b '" name "' || test -c '" name "'") != 0) continue
-		DEV_NAME[NDEV] = name
-		DEV_TYPE[NDEV] = str(devs[i], "type", "")
-		NDEV++
+	if (substr(gv(scan, "devices", devs), 1, 1) == "[") {
+		n = JSONLEN
+		for (i = 0; i != n; i++) {
+			name = str(devs[i], "name", "")
+			if (name == "") continue
+			if (system("test -b '" name "' || test -c '" name "'") != 0) continue
+			DEV_NAME[NDEV] = name
+			DEV_TYPE[NDEV] = str(devs[i], "type", "")
+			NDEV++
+		}
+	}
+
+	ndev = split(run("ls -1 /dev/sd* 2>/dev/null"), darr, "\n")
+	for (i = 1; i <= ndev; i++) {
+		dev = darr[i]
+		if (dev == "") continue
+		if (dev ~ /[0-9]$/) continue
+		if (system("test -b '" dev "'") != 0) continue
+		found = 0
+		for (j = 0; j != NDEV; j++) {
+			if (DEV_NAME[j] == dev) { found = 1; break }
+		}
+		if (found) continue
+		if (has_smart_data(run("smartctl -a -j -d sat '" dev "' 2>/dev/null"))) {
+			DEV_NAME[NDEV] = dev
+			DEV_TYPE[NDEV] = "sat"
+			NDEV++
+		}
 	}
 }
 
