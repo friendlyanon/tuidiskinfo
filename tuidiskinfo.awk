@@ -417,14 +417,47 @@ function get_nvme_temp( \
 	tv \
 ) {
 	if (t == "40" && substr(ts, 1, 1) == "[") {
-		if ((tv = gv(ts, "1")) != "") return tv
+		if ((tv = gv(ts, "1")) != "") return "1" tv
 	}
-	return t
+	return "0" t
+}
+
+function nvme_health( \
+	nvobj,
+	h, v \
+) {
+	h = 0
+	v = nvobj["critical_warning"]
+	if (v != "" && v != "0") h = 2
+	v = nvobj["media_errors"]
+	if (v != "" && v + 0 > 0) h = max(h, 1)
+	v = nvobj["available_spare"]
+	if (v != "") {
+		v = v + 0
+		if (v <= 5) h = max(h, 2)
+		else if (v <= 10) h = max(h, 1)
+	}
+	v = nvobj["percentage_used"]
+	if (v != "") {
+		v = v + 0
+		if (v >= 100) h = max(h, 2)
+		else if (v >= 90) h = max(h, 1)
+	}
+	return h
+}
+
+function nvme_field_health(k, v) {
+	if (k == "critical_warning") return v != "" && v != "0" ? 2 : 0
+	else if (k == "media_errors") return v != "" && v + 0 > 0 ? 1 : 0
+	else if (k == "num_err_log_entries") return v != "" && v + 0 > 0 ? 1 : 0
+	else if (k == "available_spare") return v + 0 < 5 ? 2 : v + 0 < 10 ? 1 : 0
+	else if (k == "percentage_used") return v + 0 > 100 ? 2 : v + 0 > 90 ? 1 : 0
+	return -1
 }
 
 function device_health( \
 	json,
-	type, tbl, n, hmax, i, st, status, nvw, t, nvobj, nv, temp, model \
+	type, tbl, n, hmax, i, st, status, nvw, t, nvobj, temp, model \
 ) {
 	type = num(json, "rotation_rate") > 0 ? "HDD" : "SSD"
 	model = str(json, "model_name", "")
@@ -441,10 +474,9 @@ function device_health( \
 	nvw = 0
 	t = gv(json, "temperature.current")
 	if (gv(json, "nvme_smart_health_information_log", nvobj) != "") {
-		nv = nvobj["critical_warning"]
-		nvw = nv != "" && nv != "0" ? 1 : 0
+		nvw = nvme_health(nvobj)
 		type = "NVMe"
-		t = get_nvme_temp(t, nvobj["temperature_sensors"])
+		t = substr(get_nvme_temp(t, nvobj["temperature_sensors"]), 2)
 	}
 	temp = t == "" ? 0 : temperature_health(t + 0, type)
 	return HEALTH[max(max(hmax, temp), max(status, nvw))]
@@ -501,7 +533,7 @@ function cache_device( \
 	n = str(json, "model_name", "")
 	model = CACHE_MODEL[i] = n == "" ? str(json, "scsi_model_name", "Unknown") : n
 	t = gv(json, "temperature.current")
-	if ((ts = gv(json, "nvme_smart_health_information_log.temperature_sensors")) != "") t = get_nvme_temp(t, ts)
+	if ((ts = gv(json, "nvme_smart_health_information_log.temperature_sensors")) != "") t = substr(get_nvme_temp(t, ts), 2)
 	CACHE_TEMP[i] = t == "" || t == "0" ? "--" : t " C"
 	CACHE_HEALTH[i] = device_health(json)
 	CACHE_FP[i] = num(json, "rotation_rate") > 0 ? failure_prob(json, model) : ""
@@ -579,7 +611,7 @@ function print_details( \
 	name, type,
 	json, model, firmware, serial, cap, rr, rotation, poh, cycles, t, st,
 	status, health, hr, hw, dur, duw, x, tbl, n, i, id, val, thr, rawv, raw, th,
-	nvobj, k, v \
+	quirk, nvobj, k, v \
 ) {
 	json = smart_json(name, type)
 	model = str(json, "model_name", "")
@@ -624,9 +656,11 @@ function print_details( \
 	} else if (gv(json, "nvme_smart_health_information_log", nvobj) != "") {
 		dur = nvobj["data_units_read"]; hr = dur == "" ? "--" : human_size(dur * 1000 * BLOCKSIZE)
 		duw = nvobj["data_units_written"]; hw = duw == "" ? "--" : human_size(duw * 1000 * BLOCKSIZE)
-		emit_banner(name, model, health, status, get_nvme_temp(t, nvobj["temperature_sensors"]), firmware, serial, cap, rotation, poh, cycles, hr, hw, get_nvme_mode(name), "")
+		x = get_nvme_temp(t, nvobj["temperature_sensors"])
+		quirk = substr(x, 1, 1) == "1"
+		emit_banner(name, model, health, status, substr(x, 2), firmware, serial, cap, rotation, poh, cycles, hr, hw, get_nvme_mode(name), "")
 		emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
-		emit(sprintf("%s NVMe Health Information Log%s", C_HEAD, RESET))
+		emit(sprintf("%s %-7s %-30s%s", C_HEAD, "Health", "NVMe Health Information Log", RESET))
 		emit(sprintf("%s%s%s", C_HEAD, DASH_C, RESET))
 		n = sorted_keys(nvobj, tbl)
 		for (i = 0; i != n; i++) {
@@ -637,7 +671,11 @@ function print_details( \
 				sub(/[[:space:]]*]/, "]", v)
 				gsub(/[[:space:]]*,[[:space:]]*/, ", ", v)
 			}
-			emit(sprintf(" %-30s: %s", k, v))
+			th = -1
+			if (k == "temperature_sensors") { if (quirk) th = temperature_health(substr(x, 2) + 0, "NVMe") }
+			else if (!quirk && k == "temperature") th = temperature_health(v + 0, "NVMe")
+			else th = nvme_field_health(k, v)
+			emit(sprintf(" %s %-30s: %s", th == -1 ? "       " : color_health(HEALTH[th]), k, v))
 		}
 	}
 	pager()
